@@ -91,3 +91,39 @@ jobs:
             runawaydegree2911/devhub-backend:latest
             runawaydegree2911/devhub-backend:sha-${{ github.sha }}
 
+  deploy-kubernetes:
+    name: Deploy to local Kubernetes
+    runs-on: [self-hosted, linux, x64]
+    needs: [frontend-build, backend-build, publish-images]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify Kubernetes connection
+        run: |
+          kubectl config current-context
+          kubectl get nodes
+          kubectl get deployments -n devhub
+
+      - name: Update frontend image
+        run: |
+          kubectl set image deployment/devhub-frontend \
+            frontend=runawaydegree2911/devhub-frontend:sha-${GITHUB_SHA} \
+            -n devhub
+
+      - name: Update backend image
+        run: |
+          kubectl set image deployment/devhub-backend \
+            backend=runawaydegree2911/devhub-backend:sha-${GITHUB_SHA} \
+            -n devhub
+
+      - name: Wait for deployments
+        run: |
+          kubectl rollout status deployment/devhub-frontend \
+            -n devhub --timeout=180s
+          kubectl rollout status deployment/devhub-backend \
+            -n devhub --timeout=180s
+
