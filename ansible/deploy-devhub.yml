@@ -1,0 +1,96 @@
+
+---
+- name: Safely deploy DevHub to Kubernetes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  vars:
+    namespace: devhub
+    app: "{{ target_app | default('frontend') }}"
+
+    image_map:
+      frontend: runawaydegree2911/devhub-frontend
+      backend: runawaydegree2911/devhub-backend
+
+    default_tag:
+      frontend: "1.1"
+      backend: "1.0"
+
+  tasks:
+    - name: Validate application selection
+      ansible.builtin.assert:
+        that:
+          - app in image_map
+        fail_msg: "Use -e target_app=frontend or -e target_app=backend"
+
+    - name: Select requested image tag
+      ansible.builtin.set_fact:
+        selected_tag: "{{ target_tag | default(default_tag[app]) }}"
+
+    - name: Validate image tag format
+      ansible.builtin.assert:
+        that:
+          - selected_tag is match('^[A-Za-z0-9_][A-Za-z0-9_.-]{0,127}$')
+        fail_msg: "Invalid image tag. Use a valid Docker image tag."
+
+    - name: Update deployment image
+      ansible.builtin.command:
+        argv:
+          - kubectl
+          - set
+          - image
+          - "deployment/devhub-{{ app }}"
+          - "{{ app }}={{ image_map[app] }}:{{ selected_tag }}"
+          - -n
+          - "{{ namespace }}"
+      register: image_update
+      changed_when: true
+
+    - name: Show image update result
+      ansible.builtin.debug:
+        var: image_update.stdout
+
+    - name: Wait for rollout to complete
+      block:
+        - name: Monitor deployment rollout
+          ansible.builtin.command:
+            argv:
+              - kubectl
+              - rollout
+              - status
+              - "deployment/devhub-{{ app }}"
+              - -n
+              - "{{ namespace }}"
+              - --timeout=120s
+          changed_when: false
+
+      rescue:
+        - name: Roll back failed deployment
+          ansible.builtin.command:
+            argv:
+              - kubectl
+              - rollout
+              - undo
+              - "deployment/devhub-{{ app }}"
+              - -n
+              - "{{ namespace }}"
+
+        - name: Wait for rollback to complete
+          ansible.builtin.command:
+            argv:
+              - kubectl
+              - rollout
+              - status
+              - "deployment/devhub-{{ app }}"
+              - -n
+              - "{{ namespace }}"
+              - --timeout=120s
+          changed_when: false
+
+        - name: Report deployment failure
+          ansible.builtin.fail:
+            msg: >-
+              Deployment failed. A rollback was attempted.
+              Check Kubernetes events and pod logs.
+

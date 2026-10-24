@@ -1,4 +1,4 @@
-@'
+
 node_modules/
 dist/
 .env
@@ -8,4 +8,6 @@ backend/node_modules/
 backend/dist/
 .git
 .DS_Store
-'@ | Set-Content .gitignore
+
+# GitHub Actions self-hosted runner
+actions-runner/

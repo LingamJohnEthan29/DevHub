@@ -1,0 +1,30 @@
+services:
+  frontend:
+    image: runawaydegree2911/devhub-frontend:1.1
+    ports:
+      - "8086:80"
+    networks:
+      - devhub-net
+    deploy:
+      replicas: 2
+      restart_policy:
+        condition: on-failure
+
+  backend:
+    image: runawaydegree2911/devhub-backend:1.0
+    env_file:
+      - ./backend/.env
+    environment:
+      FRONTEND_ORIGIN: http://localhost:8086
+    networks:
+      devhub-net:
+        aliases:
+          - devhub-backend
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+
+networks:
+  devhub-net:
+    driver: overlay
